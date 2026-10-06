@@ -1,0 +1,65 @@
+name: aetheria
+
+x-service-env: &service-env
+  NODE_ENV: development
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+  INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?set INTERNAL_AUTH_SECRET in .env}
+  RABBITMQ_URL: amqp://aetheria:aetheria@rabbitmq:5672
+
+services:
+  mongo:
+    image: mongo:7
+    # A single-node replica set, because MongoDB transactions require one.
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports: ['27017:27017']
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+      interval: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: aetheria
+      RABBITMQ_DEFAULT_PASS: aetheria
+    ports: ['5672:5672', '15672:15672']
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+
+  auth:
+    build: { context: ., args: { PACKAGE: '@aetheria/auth-service' } }
+    environment:
+      <<: *service-env
+      PORT: 4001
+      MONGO_URL: mongodb://mongo:27017/auth_db?replicaSet=rs0
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  gateway:
+    build: { context: ., args: { PACKAGE: '@aetheria/gateway' } }
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      AUTH_SERVICE_URL: http://auth:4001
+    ports: ['4000:4000']
+    depends_on: [auth]
+
+volumes:
+  mongo-data:
