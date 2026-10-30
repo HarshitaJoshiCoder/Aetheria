@@ -1,0 +1,30 @@
+{
+  "name": "@aetheria/messaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "@aetheria/contracts": "workspace:*",
+    "@aetheria/common": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1",
+    "@types/node": "^22.7.4",
+    "@types/amqplib": "^0.10.5"
+  }
+}

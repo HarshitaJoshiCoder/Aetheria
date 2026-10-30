@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm build
+      - run: pnpm typecheck
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }" && break
+            sleep 2
+          done
+          until docker exec mongo mongosh --quiet --eval "db.hello().isWritablePrimary" | grep -q true; do sleep 1; done
+      - run: pnpm test
+        env:
+          MONGO_TEST_URL: mongodb://localhost:27017
+
+  docker:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ['@aetheria/auth-service', '@aetheria/gateway']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build --build-arg PACKAGE=${{ matrix.package }} .
